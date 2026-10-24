@@ -4,6 +4,8 @@
 #include "ConsoleUI.h"
 #include "UserRepository.h"
 #include "AuthService.h"
+#include "ProductRepository.h"
+#include "ProductService.h"
 #include "MenuController.h"
 
 using namespace risms;
@@ -40,20 +42,28 @@ int main() {
     }
 
     std::string usersFile = config.getString("users_file", "data/users.txt");
+    std::string productsFile = config.getString("products_file", "data/products.txt");
     int maxAttempts = config.getInt("max_login_attempts", 3);
     int lockoutSeconds = config.getInt("lockout_duration_seconds", 300);
 
     UserRepository userRepo(usersFile);
-    auto loadResult = userRepo.load();
-    if (loadResult.isError()) {
-        ConsoleUI::printError("Could not load user file: " + loadResult.message());
+    auto userLoadResult = userRepo.load();
+    if (userLoadResult.isError()) {
+        ConsoleUI::printError("Could not load user file: " + userLoadResult.message());
+        return 1;
+    }
+    seedDefaultUserIfEmpty(userRepo);
+
+    ProductRepository productRepo(productsFile);
+    auto productLoadResult = productRepo.load();
+    if (productLoadResult.isError()) {
+        ConsoleUI::printError("Could not load product file: " + productLoadResult.message());
         return 1;
     }
 
-    seedDefaultUserIfEmpty(userRepo);
-
     AuthService authService(userRepo, maxAttempts, lockoutSeconds);
-    MenuController menu(authService);
+    ProductService productService(productRepo);
+    MenuController menu(authService, productService);
     menu.run();
 
     return 0;

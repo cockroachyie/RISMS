@@ -19,5 +19,8 @@ add_executable(risms
     src/FileStore.cpp
     src/UserRepository.cpp
     src/AuthService.cpp
+    src/Validator.cpp
+    src/ProductRepository.cpp
+    src/ProductService.cpp
     src/MenuController.cpp
 )

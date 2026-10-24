@@ -2,10 +2,19 @@
 #include "ConsoleUI.h"
 #include "ErrorCode.h"
 
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
+
 namespace risms {
 
-MenuController::MenuController(AuthService& authService)
-    : authService_(authService) {}
+MenuController::MenuController(AuthService& authService, ProductService& productService)
+    : authService_(authService), productService_(productService) {}
+
+// ---------------------------------------------------------------------
+// Login gate
+// ---------------------------------------------------------------------
 
 Result<User> MenuController::loginGate() {
     ConsoleUI::printHeader("RISMS Login");
@@ -31,28 +40,250 @@ Result<User> MenuController::loginGate() {
         } else {
             ConsoleUI::printError(result.message());
         }
-
-        if (result.error() == ErrorCode::AccountLocked) {
-            // Still loop back to the prompt (another user may want to try),
-            // rather than exiting the program outright.
-            continue;
-        }
     }
 }
 
 void MenuController::run() {
-    auto loginResult = loginGate();
-    if (loginResult.isError()) {
-        ConsoleUI::printInfo("Goodbye.");
+    try {
+        auto loginResult = loginGate();
+        if (loginResult.isError()) {
+            ConsoleUI::printInfo("Goodbye.");
+            return;
+        }
+        runMainMenu(loginResult.value());
+    } catch (const ConsoleInputClosed&) {
+        // Input stream ran out (Ctrl+D, or a piped script with no more
+        // lines) partway through a prompt. Exit cleanly instead of the
+        // read loops spinning forever on an exhausted stream.
+        ConsoleUI::printInfo("Input closed. Goodbye.");
+    }
+}
+
+// ---------------------------------------------------------------------
+// Main menu
+// ---------------------------------------------------------------------
+
+void MenuController::runMainMenu(const User& user) {
+    while (true) {
+        ConsoleUI::printHeader("Main Menu");
+        ConsoleUI::printInfo("Logged in as: " + user.username);
+        std::cout << "1. Add product\n"
+                  << "2. Update product\n"
+                  << "3. Remove product\n"
+                  << "4. List all products\n"
+                  << "5. Find product by ID (detail view)\n"
+                  << "6. Search products by name\n"
+                  << "7. Exit\n";
+
+        int choice = ConsoleUI::readInt("Choose an option: ", 1, 7);
+        switch (choice) {
+            case 1: handleAddProduct(); break;
+            case 2: handleUpdateProduct(); break;
+            case 3: handleRemoveProduct(); break;
+            case 4: handleListAll(); break;
+            case 5: handleFindById(); break;
+            case 6: handleSearchByName(); break;
+            case 7:
+                ConsoleUI::printInfo("Goodbye.");
+                return;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// Product field prompting (shared by add and update)
+// ---------------------------------------------------------------------
+
+Product MenuController::promptForProductFields(const Product& existing) {
+    bool isUpdate = !existing.id.empty();
+    Product p = existing;
+
+    auto promptString = [&](const std::string& label, std::string& field, bool required) {
+        while (true) {
+            std::string suffix = isUpdate ? (" [" + field + "]") : "";
+            std::string line = ConsoleUI::readLine(label + suffix + ": ");
+            if (line.empty()) {
+                if (isUpdate || !required) return; // keep current value (or leave blank if optional)
+                ConsoleUI::printError(label + " cannot be empty.");
+                continue;
+            }
+            field = line;
+            return;
+        }
+    };
+
+    auto promptDouble = [&](const std::string& label, double& field) {
+        while (true) {
+            std::ostringstream cur;
+            cur << std::fixed << std::setprecision(2) << field;
+            std::string suffix = isUpdate ? (" [" + cur.str() + "]") : "";
+            std::string line = ConsoleUI::readLine(label + suffix + ": ");
+            if (line.empty()) {
+                if (isUpdate) return;
+                ConsoleUI::printError(label + " cannot be empty.");
+                continue;
+            }
+            try {
+                size_t pos = 0;
+                double v = std::stod(line, &pos);
+                if (pos != line.size()) throw std::invalid_argument("trailing characters");
+                field = v;
+                return;
+            } catch (...) {
+                ConsoleUI::printError("Enter a valid number.");
+            }
+        }
+    };
+
+    auto promptInt = [&](const std::string& label, int& field) {
+        while (true) {
+            std::string suffix = isUpdate ? (" [" + std::to_string(field) + "]") : "";
+            std::string line = ConsoleUI::readLine(label + suffix + ": ");
+            if (line.empty()) {
+                if (isUpdate) return;
+                ConsoleUI::printError(label + " cannot be empty.");
+                continue;
+            }
+            try {
+                size_t pos = 0;
+                int v = std::stoi(line, &pos);
+                if (pos != line.size()) throw std::invalid_argument("trailing characters");
+                field = v;
+                return;
+            } catch (...) {
+                ConsoleUI::printError("Enter a valid whole number.");
+            }
+        }
+    };
+
+    promptString("SKU", p.sku, true);
+    promptString("Name", p.name, true);
+    promptString("Category", p.category, false);
+    promptDouble("Unit price", p.unitPrice);
+    promptInt("Quantity", p.quantity);
+    promptInt("Low-stock threshold", p.lowStockThreshold);
+
+    return p;
+}
+
+// ---------------------------------------------------------------------
+// Menu actions
+// ---------------------------------------------------------------------
+
+void MenuController::handleAddProduct() {
+    ConsoleUI::printHeader("Add Product");
+    Product input = promptForProductFields(Product{}); // empty id => add mode
+    auto result = productService_.addProduct(input);
+    if (result.isOk()) {
+        ConsoleUI::printSuccess("Product added with id " + result.value().id + ".");
+        printProductDetail(result.value());
+    } else {
+        ConsoleUI::printError(result.message());
+    }
+}
+
+void MenuController::handleUpdateProduct() {
+    ConsoleUI::printHeader("Update Product");
+    std::string id = ConsoleUI::readNonEmptyLine("Product id to update: ");
+
+    auto existing = productService_.findById(id);
+    if (existing.isError()) {
+        ConsoleUI::printError(existing.message());
         return;
     }
 
-    // Sprint 1 scope ends at the login gate. The real inventory menu
-    // (product records, stock in/out, history, low-stock summary) is
-    // wired in during a later sprint.
-    ConsoleUI::printHeader("Main Menu");
-    ConsoleUI::printInfo("Logged in as: " + loginResult.value().username);
-    ConsoleUI::printInfo("Main menu not yet implemented (upcoming sprint).");
+    ConsoleUI::printInfo("Press Enter on any field to keep its current value.");
+    Product updated = promptForProductFields(existing.value());
+
+    auto result = productService_.updateProduct(updated);
+    if (result.isOk()) {
+        ConsoleUI::printSuccess("Product " + result.value().id + " updated.");
+        printProductDetail(result.value());
+    } else {
+        ConsoleUI::printError(result.message());
+    }
+}
+
+void MenuController::handleRemoveProduct() {
+    ConsoleUI::printHeader("Remove Product");
+    std::string id = ConsoleUI::readNonEmptyLine("Product id to remove: ");
+
+    auto existing = productService_.findById(id);
+    if (existing.isError()) {
+        ConsoleUI::printError(existing.message());
+        return;
+    }
+
+    printProductDetail(existing.value());
+    if (!ConsoleUI::confirm("Remove this product?")) {
+        ConsoleUI::printInfo("Cancelled.");
+        return;
+    }
+
+    auto result = productService_.removeProduct(id);
+    if (result.isOk()) {
+        ConsoleUI::printSuccess("Product " + id + " removed.");
+    } else {
+        ConsoleUI::printError(result.message());
+    }
+}
+
+void MenuController::handleListAll() {
+    ConsoleUI::printHeader("All Products");
+    auto products = productService_.listAll();
+    if (products.empty()) {
+        ConsoleUI::printInfo("No products recorded yet.");
+        return;
+    }
+    for (const auto& p : products) printProductRow(p);
+}
+
+void MenuController::handleFindById() {
+    ConsoleUI::printHeader("Product Detail");
+    std::string id = ConsoleUI::readNonEmptyLine("Product id: ");
+    auto result = productService_.findById(id);
+    if (result.isError()) {
+        ConsoleUI::printError(result.message());
+        return;
+    }
+    printProductDetail(result.value());
+}
+
+void MenuController::handleSearchByName() {
+    ConsoleUI::printHeader("Search Products by Name");
+    std::string query = ConsoleUI::readNonEmptyLine("Search text: ");
+    auto results = productService_.searchByName(query);
+    if (results.empty()) {
+        ConsoleUI::printInfo("No products matched \"" + query + "\".");
+        return;
+    }
+    for (const auto& p : results) printProductRow(p);
+}
+
+// ---------------------------------------------------------------------
+// Display helpers
+// ---------------------------------------------------------------------
+
+void MenuController::printProductRow(const Product& p) {
+    std::ostringstream oss;
+    oss << p.id << "  " << p.sku << "  " << p.name
+        << "  qty=" << p.quantity
+        << "  price=" << std::fixed << std::setprecision(2) << p.unitPrice
+        << (p.isLowStock() ? "  [LOW STOCK]" : "");
+    ConsoleUI::printInfo(oss.str());
+}
+
+void MenuController::printProductDetail(const Product& p) {
+    std::cout << "\n"
+              << "  ID:                  " << p.id << "\n"
+              << "  SKU:                 " << p.sku << "\n"
+              << "  Name:                " << p.name << "\n"
+              << "  Category:            " << (p.category.empty() ? "(none)" : p.category) << "\n"
+              << "  Unit Price:          " << std::fixed << std::setprecision(2) << p.unitPrice << "\n"
+              << "  Quantity:            " << p.quantity << "\n"
+              << "  Low-stock threshold: " << p.lowStockThreshold << "\n"
+              << "  Status:              " << (p.isLowStock() ? "LOW STOCK" : "OK") << "\n"
+              << std::endl;
 }
 
 } // namespace risms

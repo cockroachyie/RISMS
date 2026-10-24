@@ -5,6 +5,13 @@
 
 namespace risms {
 
+// Thrown by ConsoleUI's read* functions when stdin hits end-of-file
+// (e.g. Ctrl+D at a real terminal, or a piped input script running out
+// of lines). Callers should let this propagate up to a single top-level
+// catch (see MenuController::run) rather than catching it per-prompt -
+// an exhausted input stream means there is nothing left to prompt for.
+struct ConsoleInputClosed {};
+
 // Static helpers for all console input/output. Centralizing these means
 // no other class touches std::cin/std::cout directly, so prompt format,
 // validation and (later) input sanitization only live in one place.
@@ -13,6 +20,7 @@ public:
     static std::string readLine(const std::string& prompt);
     static std::string readNonEmptyLine(const std::string& prompt);
     static int readInt(const std::string& prompt, int min, int max);
+    static double readDouble(const std::string& prompt, double min, double max);
 
     // Reads a password without echoing it to the terminal (falls back to
     // plain input if the terminal doesn't support masking, e.g. piped stdin).

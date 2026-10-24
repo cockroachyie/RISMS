@@ -2,26 +2,41 @@
 #define RISMS_MENU_CONTROLLER_H
 
 #include "AuthService.h"
+#include "ProductService.h"
 #include "Result.h"
 #include "User.h"
+#include "Product.h"
 
 namespace risms {
 
-// Top-level application loop. Sprint 1 only implements the login gate:
-// no caller reaches the (future) main inventory menu without a successful
-// AuthService::login(). Later sprints plug the main menu into run().
+// Top-level application loop. No caller reaches the main menu without a
+// successful AuthService::login(). After login, the main menu exposes the
+// Sprint 1 product operations (add/update/remove/list/find/search) built
+// on ProductService. Stock in/out, movement history and the low-stock
+// summary are out of scope for Sprint 1 and are not wired in here.
 class MenuController {
 public:
-    explicit MenuController(AuthService& authService);
+    MenuController(AuthService& authService, ProductService& productService);
 
     void run();
 
 private:
     AuthService& authService_;
+    ProductService& productService_;
 
-    // Prompts for credentials in a loop until login succeeds or the user
-    // chooses to quit. Returns Ok(User) on success, Fail(...) on quit.
     Result<User> loginGate();
+    void runMainMenu(const User& user);
+
+    void handleAddProduct();
+    void handleUpdateProduct();
+    void handleRemoveProduct();
+    void handleListAll();
+    void handleFindById(); // doubles as the product detail view
+    void handleSearchByName();
+
+    Product promptForProductFields(const Product& existing); // existing used to prefill on update (empty id => add)
+    void printProductDetail(const Product& p);
+    void printProductRow(const Product& p);
 };
 
 } // namespace risms

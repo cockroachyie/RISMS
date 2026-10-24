@@ -14,6 +14,8 @@ enum class ErrorCode {
     FileIOError,
     ConfigError,
     DuplicateUser,
+    ProductNotFound,
+    DuplicateSku,
     Unknown
 };
 
@@ -27,6 +29,8 @@ inline std::string toString(ErrorCode code) {
         case ErrorCode::FileIOError:         return "FileIOError";
         case ErrorCode::ConfigError:         return "ConfigError";
         case ErrorCode::DuplicateUser:       return "DuplicateUser";
+        case ErrorCode::ProductNotFound:     return "ProductNotFound";
+        case ErrorCode::DuplicateSku:        return "DuplicateSku";
         default:                             return "Unknown";
     }
 }

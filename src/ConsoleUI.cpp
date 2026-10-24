@@ -18,8 +18,14 @@ std::string ConsoleUI::readLine(const std::string& prompt) {
     std::cout << prompt;
     std::string line;
     if (!std::getline(std::cin, line)) {
-        // Stdin closed/EOF: treat as empty input so callers can handle it
-        // the same way as a blank line rather than crashing.
+        if (std::cin.eof()) {
+            // Stdin is permanently exhausted (closed terminal / piped
+            // script ran out of lines). Looping and reprompting here
+            // would spin forever producing nothing but error messages,
+            // so signal the caller stack to unwind instead.
+            throw ConsoleInputClosed{};
+        }
+        // Some other, recoverable stream error: clear and treat as blank.
         std::cin.clear();
         line.clear();
     }
@@ -54,6 +60,24 @@ int ConsoleUI::readInt(const std::string& prompt, int min, int max) {
                        " and " + std::to_string(max) + ".");
         } else {
             printError("Enter a valid whole number.");
+        }
+    }
+}
+
+double ConsoleUI::readDouble(const std::string& prompt, double min, double max) {
+    while (true) {
+        std::string line = readLine(prompt);
+        std::istringstream iss(line);
+        double value;
+        char leftover;
+        if ((iss >> value) && !(iss >> leftover)) {
+            if (value >= min && value <= max) {
+                return value;
+            }
+            printError("Enter a number between " + std::to_string(min) +
+                       " and " + std::to_string(max) + ".");
+        } else {
+            printError("Enter a valid number.");
         }
     }
 }
