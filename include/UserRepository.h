@@ -5,6 +5,7 @@
 #include <vector>
 #include "Result.h"
 #include "User.h"
+#include "FileStore.h"
 
 namespace risms {
 

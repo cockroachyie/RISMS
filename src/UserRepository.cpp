@@ -1,6 +1,5 @@
 #include "UserRepository.h"
 
-#include <fstream>
 #include <sstream>
 #include <algorithm>
 
@@ -46,17 +45,14 @@ Result<User> UserRepository::deserialize(const std::string& line) {
 }
 
 Result<void> UserRepository::load() {
-    std::ifstream file(filePath_);
     users_.clear();
 
-    if (!file.is_open()) {
-        // No file yet is fine; save() will create it on first write.
-        return Result<void>::Ok();
+    auto linesResult = FileStore::readLines(filePath_);
+    if (linesResult.isError()) {
+        return Result<void>::Fail(linesResult.error(), linesResult.message());
     }
 
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty()) continue;
+    for (const auto& line : linesResult.value()) {
         auto parsed = deserialize(line);
         if (parsed.isError()) {
             return Result<void>::Fail(parsed.error(), parsed.message());
@@ -68,15 +64,14 @@ Result<void> UserRepository::load() {
 }
 
 Result<void> UserRepository::save() const {
-    std::ofstream file(filePath_, std::ios::trunc);
-    if (!file.is_open()) {
-        return Result<void>::Fail(ErrorCode::FileIOError,
-                                   "Could not open user file for writing: " + filePath_);
-    }
+    std::vector<std::string> lines;
+    lines.reserve(users_.size());
     for (const auto& u : users_) {
-        file << serialize(u) << '\n';
+        lines.push_back(serialize(u));
     }
-    return Result<void>::Ok();
+    // Atomic write: readers (or a crash mid-write) never see a half-written
+    // users file - they see either the previous version or the new one.
+    return FileStore::writeLinesAtomic(filePath_, lines);
 }
 
 Result<User> UserRepository::findByUsername(const std::string& username) const {

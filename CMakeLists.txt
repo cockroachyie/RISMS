@@ -16,6 +16,7 @@ add_executable(risms
     src/main.cpp
     src/ConsoleUI.cpp
     src/ConfigStore.cpp
+    src/FileStore.cpp
     src/UserRepository.cpp
     src/AuthService.cpp
     src/MenuController.cpp

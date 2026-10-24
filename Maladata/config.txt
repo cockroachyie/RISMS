@@ -1,5 +1,0 @@
-# RISMS configuration
-data_dir=data
-users_file=data/users.txt
-max_login_attempts=3
-lockout_duration_seconds=300
