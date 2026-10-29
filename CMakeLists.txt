@@ -23,4 +23,6 @@ add_executable(risms
     src/ProductRepository.cpp
     src/ProductService.cpp
     src/MenuController.cpp
+    src/LedgerRepository.cpp
+    src/StockService.cpp
 )
