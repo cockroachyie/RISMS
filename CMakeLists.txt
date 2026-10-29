@@ -23,6 +23,11 @@ add_executable(risms
     src/ProductRepository.cpp
     src/ProductService.cpp
     src/MenuController.cpp
+    # RED stories - Manoj
     src/LedgerRepository.cpp
     src/StockService.cpp
+
+    # GREEN stories - Mayank
+    src/ReportService.cpp
+    src/errorlogger.cpp
 )

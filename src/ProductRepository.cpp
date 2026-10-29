@@ -1,4 +1,5 @@
 #include "ProductRepository.h"
+#include "Errorlogger.h"
 
 #include <algorithm>
 #include <sstream>
@@ -52,15 +53,31 @@ Result<void> ProductRepository::load() {
     products_.clear();
 
     auto linesResult = FileStore::readLines(filePath_);
+
     if (linesResult.isError()) {
-        return Result<void>::Fail(linesResult.error(), linesResult.message());
+        return Result<void>::Fail(
+            linesResult.error(),
+            linesResult.message());
     }
 
+    int lineNumber = 0;
+
     for (const auto& line : linesResult.value()) {
+
+        ++lineNumber;
+
         auto parsed = deserialize(line);
+
         if (parsed.isError()) {
-            return Result<void>::Fail(parsed.error(), parsed.message());
+
+            ErrorLogger::warning(
+                "ProductRepository",
+                "Skipping corrupt product record at line " +
+                std::to_string(lineNumber));
+
+            continue;
         }
+
         products_.push_back(parsed.value());
     }
 
