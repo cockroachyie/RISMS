@@ -31,3 +31,20 @@ add_executable(risms
     src/ReportService.cpp
     src/errorlogger.cpp
 )
+
+add_executable(risms_tests
+    tests/test_risms.cpp
+    src/ConfigStore.cpp
+    src/FileStore.cpp
+    src/UserRepository.cpp
+    src/AuthService.cpp
+    src/Validator.cpp
+    src/ProductRepository.cpp
+    src/ProductService.cpp
+    src/LedgerRepository.cpp
+    src/StockService.cpp
+    src/ReportService.cpp
+    src/errorlogger.cpp
+)
+enable_testing()
+add_test(NAME risms_tests COMMAND risms_tests)
