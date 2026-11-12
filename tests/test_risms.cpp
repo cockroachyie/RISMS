@@ -855,6 +855,124 @@ TEST(TC_AUTH_09_duplicate_user_rejected) {
     CHECK(f.users.addUser(u).isError());
 }
 
+static User staffActor() {
+    User u;
+    u.username = "clerk";
+    u.role = kRoleInventoryStaff;
+    return u;
+}
+
+TEST(TC_USR_01_admin_creates_user_who_can_login) {
+    AuthFixture f;
+    AuthService auth(f.users, 3, 300);
+    User admin = auth.login("admin", "Admin@123").value();
+    auto r = auth.createUser(admin, "alice", "Secret#1", kRoleInventoryStaff);
+    CHECK(r.isOk());
+    CHECK_EQ(r.value().role, kRoleInventoryStaff);
+    CHECK(auth.login("alice", "Secret#1").isOk());
+}
+
+TEST(TC_USR_02_new_user_persisted_hashed) {
+    AuthFixture f;
+    AuthService auth(f.users, 3, 300);
+    User admin = auth.login("admin", "Admin@123").value();
+    CHECK(auth.createUser(admin, "bob", "Hunter22", "admin").isOk());
+
+    auto lines = readFile(f.dir.file("users.txt"));
+    CHECK_EQ(lines.size(), (size_t)2);
+    CHECK(lines[1].find("Hunter22") == std::string::npos);
+
+    UserRepository reloaded(f.dir.file("users.txt"));
+    CHECK(reloaded.load().isOk());
+    AuthService auth2(reloaded, 3, 300);
+    auto r = auth2.login("bob", "Hunter22");
+    CHECK(r.isOk());
+    CHECK_EQ(r.value().role, std::string("admin"));
+}
+
+TEST(TC_USR_03_non_admin_cannot_create_user) {
+    AuthFixture f;
+    AuthService auth(f.users, 3, 300);
+    auto r = auth.createUser(staffActor(), "mallory", "Secret#1", "admin");
+    CHECK_EQ(r.error(), ErrorCode::PermissionDenied);
+    CHECK_EQ(f.users.count(), (size_t)1);
+}
+
+TEST(TC_USR_04_duplicate_username_rejected) {
+    AuthFixture f;
+    AuthService auth(f.users, 3, 300);
+    User admin = auth.login("admin", "Admin@123").value();
+    CHECK_EQ(auth.createUser(admin, "admin", "Secret#1", kRoleInventoryStaff).error(),
+             ErrorCode::DuplicateUser);
+}
+
+TEST(TC_USR_05_invalid_username_and_password_rejected) {
+    AuthFixture f;
+    AuthService auth(f.users, 3, 300);
+    User admin = auth.login("admin", "Admin@123").value();
+    CHECK_EQ(auth.createUser(admin, "ab", "Secret#1", kRoleInventoryStaff).error(), ErrorCode::InvalidInput);
+    CHECK_EQ(auth.createUser(admin, "bad|name", "Secret#1", kRoleInventoryStaff).error(), ErrorCode::InvalidInput);
+    CHECK_EQ(auth.createUser(admin, "has space", "Secret#1", kRoleInventoryStaff).error(), ErrorCode::InvalidInput);
+    CHECK_EQ(auth.createUser(admin, "carol", "short", kRoleInventoryStaff).error(), ErrorCode::InvalidInput);
+    CHECK_EQ(auth.createUser(admin, "carol", "pipe|pass", kRoleInventoryStaff).error(), ErrorCode::InvalidInput);
+    CHECK_EQ(auth.createUser(admin, "carol", "Secret#1", "owner").error(), ErrorCode::InvalidInput);
+    CHECK_EQ(f.users.count(), (size_t)1);
+}
+
+TEST(TC_USR_06_only_admin_and_inventory_staff_roles) {
+    AuthFixture f;
+    AuthService auth(f.users, 3, 300);
+    User admin = auth.login("admin", "Admin@123").value();
+    CHECK_EQ(auth.createUser(admin, "carol", "Secret#1", "user").error(), ErrorCode::InvalidInput);
+    CHECK_EQ(auth.createUser(admin, "carol", "Secret#1", "staff").error(), ErrorCode::InvalidInput);
+
+    // Unknown/legacy roles on disk load as Inventory Staff, never Admin.
+    writeFile(f.dir.file("legacy.txt"), "dave|h|s|0|0|staff\neve|h|s|0|0|user\n");
+    UserRepository legacy(f.dir.file("legacy.txt"));
+    CHECK(legacy.load().isOk());
+    CHECK_EQ(legacy.findByUsername("dave").value().role, kRoleInventoryStaff);
+    CHECK_EQ(legacy.findByUsername("eve").value().role, kRoleInventoryStaff);
+}
+
+TEST(TC_USR_07_inventory_staff_permissions) {
+    User staff = staffActor();
+    CHECK(!staff.isAdmin());
+    CHECK(!staff.canManageAccounts());
+    CHECK(!staff.canRemoveProduct());
+    CHECK(!staff.canViewInventorySummary());
+    CHECK_EQ(roleDisplayName(staff.role), std::string("Inventory Staff"));
+
+    User admin;
+    admin.role = kRoleAdmin;
+    CHECK(admin.canManageAccounts());
+    CHECK(admin.canRemoveProduct());
+    CHECK(admin.canViewInventorySummary());
+}
+
+TEST(TC_USR_08_admin_removes_account) {
+    AuthFixture f;
+    AuthService auth(f.users, 3, 300);
+    User admin = auth.login("admin", "Admin@123").value();
+    CHECK(auth.createUser(admin, "alice", "Secret#1", kRoleInventoryStaff).isOk());
+    CHECK(auth.removeUser(admin, "alice").isOk());
+    CHECK_EQ(auth.login("alice", "Secret#1").error(), ErrorCode::UserNotFound);
+
+    UserRepository reloaded(f.dir.file("users.txt"));
+    CHECK(reloaded.load().isOk());
+    CHECK_EQ(reloaded.count(), (size_t)1);
+}
+
+TEST(TC_USR_09_remove_account_rules) {
+    AuthFixture f;
+    AuthService auth(f.users, 3, 300);
+    User admin = auth.login("admin", "Admin@123").value();
+    CHECK(auth.createUser(admin, "alice", "Secret#1", kRoleInventoryStaff).isOk());
+    CHECK_EQ(auth.removeUser(staffActor(), "alice").error(), ErrorCode::PermissionDenied);
+    CHECK_EQ(auth.removeUser(admin, "admin").error(), ErrorCode::InvalidInput);
+    CHECK_EQ(auth.removeUser(admin, "ghost").error(), ErrorCode::UserNotFound);
+    CHECK_EQ(f.users.count(), (size_t)2);
+}
+
 // =====================================================================
 // Config  (2.6 assumptions: threshold / limits come from config)
 // =====================================================================

@@ -76,26 +76,41 @@ void MenuController::runMainMenu(const User& user) {
         ConsoleUI::printHeader("Main Menu");
 
         ConsoleUI::printInfo(
-            "Logged in as: " + user.username);
+            "Logged in as: " + user.username +
+            " (" + roleDisplayName(user.role) + ")");
 
+        // Option numbers stay fixed per role; options a role can't use
+        // are hidden and rejected if typed anyway.
         std::cout
             << "1. Add product\n"
-            << "2. Update product\n"
-            << "3. Remove product\n"
+            << "2. Update product\n";
+        if (user.canRemoveProduct()) std::cout << "3. Remove product\n";
+        std::cout
             << "4. Search product\n"
             << "5. Stock in\n"
             << "6. Stock out\n"
             << "7. Check stock\n"
             << "8. Stock history\n"
-            << "9. List all products\n"
-            << "10. Inventory summary\n"
-            << "0. Logout and exit\n";
+            << "9. List all products\n";
+        if (user.canViewInventorySummary()) std::cout << "10. Inventory summary\n";
+        if (user.canManageAccounts()) {
+            std::cout << "11. Add account\n"
+                      << "12. Remove account\n";
+        }
+        std::cout << "0. Logout and exit\n";
 
         int choice =
             ConsoleUI::readInt(
                 "Choose an option: ",
                 0,
-                10);
+                12);
+
+        if ((choice == 3 && !user.canRemoveProduct()) ||
+            (choice == 10 && !user.canViewInventorySummary()) ||
+            ((choice == 11 || choice == 12) && !user.canManageAccounts())) {
+            ConsoleUI::printError("You do not have permission to use that option.");
+            continue;
+        }
 
         switch (choice) {
 
@@ -108,7 +123,7 @@ void MenuController::runMainMenu(const User& user) {
                 break;
 
             case 3:
-                handleRemoveProduct();
+                handleRemoveProduct(user);
                 break;
 
             case 4:
@@ -136,7 +151,15 @@ void MenuController::runMainMenu(const User& user) {
                 break;
 
             case 10:
-                handleInventorySummary();
+                handleInventorySummary(user);
+                break;
+
+            case 11:
+                handleAddAccount(user);
+                break;
+
+            case 12:
+                handleRemoveAccount(user);
                 break;
 
             case 0:
@@ -259,8 +282,12 @@ void MenuController::handleUpdateProduct() {
     }
 }
 
-void MenuController::handleRemoveProduct() {
+void MenuController::handleRemoveProduct(const User& user) {
     ConsoleUI::printHeader("Remove Product");
+    if (!user.canRemoveProduct()) {
+        ConsoleUI::printError("Inventory staff cannot remove products.");
+        return;
+    }
     std::string id = ConsoleUI::readNonEmptyLine("Product id to remove: ");
 
     auto existing = productService_.findById(id);
@@ -474,10 +501,15 @@ void MenuController::handleStockHistory() {
             << '\n';
     }
 }
-void MenuController::handleInventorySummary() {
+void MenuController::handleInventorySummary(const User& user) {
 
     ConsoleUI::printHeader(
         "Inventory Summary");
+
+    if (!user.canViewInventorySummary()) {
+        ConsoleUI::printError("Inventory staff cannot view the inventory summary.");
+        return;
+    }
 
     auto result =
         reportService_.inventorySummary();
@@ -507,6 +539,62 @@ void MenuController::handleInventorySummary() {
         << "Low-stock products: "
         << summary.lowStockProducts
         << '\n';
+}
+
+void MenuController::handleAddAccount(const User& admin) {
+    ConsoleUI::printHeader("Add Account");
+
+    if (!admin.canManageAccounts()) {
+        ConsoleUI::printError("Only admins can add accounts.");
+        return;
+    }
+
+    std::string username = ConsoleUI::readNonEmptyLine("New username: ");
+
+    std::string password;
+    while (true) {
+        password = ConsoleUI::readPassword("Password: ");
+        std::string confirmPw = ConsoleUI::readPassword("Confirm password: ");
+        if (password == confirmPw) break;
+        ConsoleUI::printError("Passwords do not match. Try again.");
+    }
+
+    std::cout << "Role:\n"
+              << "  1. Admin\n"
+              << "  2. Inventory Staff\n";
+    std::string role =
+        ConsoleUI::readInt("Choose role: ", 1, 2) == 1 ? kRoleAdmin : kRoleInventoryStaff;
+
+    auto result = authService_.createUser(admin, username, password, role);
+    if (result.isError()) {
+        ConsoleUI::printError(result.message());
+        return;
+    }
+
+    ConsoleUI::printSuccess("Account '" + result.value().username +
+                            "' created as " + roleDisplayName(result.value().role) + ".");
+}
+
+void MenuController::handleRemoveAccount(const User& admin) {
+    ConsoleUI::printHeader("Remove Account");
+
+    if (!admin.canManageAccounts()) {
+        ConsoleUI::printError("Only admins can remove accounts.");
+        return;
+    }
+
+    std::string username = ConsoleUI::readNonEmptyLine("Username to remove: ");
+    if (!ConsoleUI::confirm("Remove account '" + username + "'?")) {
+        ConsoleUI::printInfo("Cancelled.");
+        return;
+    }
+
+    auto result = authService_.removeUser(admin, username);
+    if (result.isError()) {
+        ConsoleUI::printError(result.message());
+        return;
+    }
+    ConsoleUI::printSuccess("Account '" + username + "' removed.");
 }
 
 } // namespace risms

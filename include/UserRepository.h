@@ -35,6 +35,11 @@ public:
     // username is already taken.
     Result<void> addUser(const User& user);
 
+    // Deletes the account and persists. Fails with UserNotFound if absent.
+    Result<void> removeUser(const std::string& username);
+
+    const std::vector<User>& all() const { return users_; }
+
     size_t count() const { return users_.size(); }
 
 private:

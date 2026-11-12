@@ -39,7 +39,10 @@ Result<User> UserRepository::deserialize(const std::string& line) {
         return Result<User>::Fail(ErrorCode::FileIOError,
                                    "Malformed numeric field in user record: " + line);
     }
-    u.role = fields[5];
+    // Only Admin and Inventory Staff exist. Anything else (including the
+    // old "staff" value) loads as Inventory Staff - the least-privileged
+    // role - so an unexpected value can never grant admin rights.
+    u.role = isValidRole(fields[5]) ? fields[5] : kRoleInventoryStaff;
 
     return Result<User>::Ok(u);
 }
@@ -92,6 +95,17 @@ Result<void> UserRepository::update(const User& user) {
                                    "Cannot update unknown user: " + user.username);
     }
     *it = user;
+    return save();
+}
+
+Result<void> UserRepository::removeUser(const std::string& username) {
+    auto it = std::find_if(users_.begin(), users_.end(),
+                            [&](const User& u) { return u.username == username; });
+    if (it == users_.end()) {
+        return Result<void>::Fail(ErrorCode::UserNotFound,
+                                   "No account with username: " + username);
+    }
+    users_.erase(it);
     return save();
 }
 

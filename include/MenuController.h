@@ -37,7 +37,7 @@ private:
 
     void handleAddProduct();
     void handleUpdateProduct();
-    void handleRemoveProduct();
+    void handleRemoveProduct(const User& user);
     void handleListAll();
     void handleFindById(); // doubles as the product detail view
     void handleSearchByName();
@@ -45,7 +45,9 @@ private:
     void handleStockOut(const User& user);
     void handleCheckStock();
     void handleStockHistory();
-    void handleInventorySummary();
+    void handleInventorySummary(const User& user);
+    void handleAddAccount(const User& admin);
+    void handleRemoveAccount(const User& admin);
 
     Product promptForProductFields(const Product& existing); // existing used to prefill on update (empty id => add)
     void printProductDetail(const Product& p);

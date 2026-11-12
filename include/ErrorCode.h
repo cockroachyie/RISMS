@@ -17,6 +17,7 @@ enum class ErrorCode {
     ProductNotFound,
     DuplicateSku,
     InsufficientStock,
+    PermissionDenied,
     Unknown
 };
 
@@ -33,6 +34,7 @@ inline std::string toString(ErrorCode code) {
         case ErrorCode::ProductNotFound:     return "ProductNotFound";
         case ErrorCode::DuplicateSku:        return "DuplicateSku";
         case ErrorCode::InsufficientStock:     return "InsufficientStock";
+        case ErrorCode::PermissionDenied:    return "PermissionDenied";
         default:                             return "Unknown";
     }
 }

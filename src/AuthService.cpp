@@ -1,5 +1,6 @@
 #include "AuthService.h"
 
+#include <cctype>
 #include <chrono>
 #include <random>
 #include <sstream>
@@ -49,6 +50,65 @@ std::string AuthService::hashPassword(const std::string& password, const std::st
 void AuthService::setPassword(User& user, const std::string& plainPassword) {
     user.salt = generateSalt();
     user.passwordHash = hashPassword(plainPassword, user.salt);
+}
+
+Result<User> AuthService::createUser(const User& actor,
+                                     const std::string& username,
+                                     const std::string& password,
+                                     const std::string& role) {
+    if (!actor.canManageAccounts()) {
+        return Result<User>::Fail(ErrorCode::PermissionDenied,
+                                  "Only admins can add accounts.");
+    }
+
+    if (username.size() < 3 || username.size() > 32) {
+        return Result<User>::Fail(ErrorCode::InvalidInput,
+                                  "Username must be 3-32 characters.");
+    }
+    for (unsigned char c : username) {
+        if (!(std::isalnum(c) || c == '_' || c == '.' || c == '-')) {
+            return Result<User>::Fail(
+                ErrorCode::InvalidInput,
+                "Username may only contain letters, digits, '_', '.' or '-'.");
+        }
+    }
+
+    if (password.size() < 6 || password.size() > 64) {
+        return Result<User>::Fail(ErrorCode::InvalidInput,
+                                  "Password must be 6-64 characters.");
+    }
+    if (password.find_first_of("|\r\n") != std::string::npos) {
+        return Result<User>::Fail(ErrorCode::InvalidInput,
+                                  "Password may not contain '|' or line breaks.");
+    }
+
+    if (!isValidRole(role)) {
+        return Result<User>::Fail(ErrorCode::InvalidInput,
+                                  "Role must be Admin or Inventory Staff.");
+    }
+
+    User user;
+    user.username = username;
+    user.role = role;
+    setPassword(user, password);
+
+    auto added = userRepo_.addUser(user);
+    if (added.isError()) {
+        return Result<User>::Fail(added.error(), added.message());
+    }
+    return Result<User>::Ok(user);
+}
+
+Result<void> AuthService::removeUser(const User& actor, const std::string& username) {
+    if (!actor.canManageAccounts()) {
+        return Result<void>::Fail(ErrorCode::PermissionDenied,
+                                  "Only admins can remove accounts.");
+    }
+    if (username == actor.username) {
+        return Result<void>::Fail(ErrorCode::InvalidInput,
+                                  "You cannot remove your own account.");
+    }
+    return userRepo_.removeUser(username);
 }
 
 Result<User> AuthService::login(const std::string& username, const std::string& password) {

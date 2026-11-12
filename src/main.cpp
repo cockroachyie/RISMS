@@ -16,9 +16,9 @@ using namespace risms;
 
 namespace {
 
-// Sprint 1 has no "create user" story yet, so if the user file is empty
-// we seed one default account purely so the login gate is testable
-// end-to-end. Remove this once an admin/user-creation flow exists.
+// If the user file is empty we seed one default admin account so there is
+// always someone who can log in and create further users via the
+// "Add account" menu option.
 void seedDefaultUserIfEmpty(UserRepository& repo) {
     if (repo.count() > 0) return;
 
