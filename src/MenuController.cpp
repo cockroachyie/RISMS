@@ -9,8 +9,15 @@
 
 namespace risms {
 
-MenuController::MenuController(AuthService& authService, ProductService& productService)
-    : authService_(authService), productService_(productService) {}
+MenuController::MenuController(
+    AuthService& authService,
+    ProductService& productService,
+    StockService& stockService,
+    ReportService& reportService)
+    : authService_(authService),
+      productService_(productService),
+      stockService_(stockService),
+      reportService_(reportService) {}
 
 // ---------------------------------------------------------------------
 // Login gate
@@ -65,25 +72,74 @@ void MenuController::run() {
 
 void MenuController::runMainMenu(const User& user) {
     while (true) {
-        ConsoleUI::printHeader("Main Menu");
-        ConsoleUI::printInfo("Logged in as: " + user.username);
-        std::cout << "1. Add product\n"
-                  << "2. Update product\n"
-                  << "3. Remove product\n"
-                  << "4. List all products\n"
-                  << "5. Find product by ID (detail view)\n"
-                  << "6. Search products by name\n"
-                  << "7. Exit\n";
 
-        int choice = ConsoleUI::readInt("Choose an option: ", 1, 7);
+        ConsoleUI::printHeader("Main Menu");
+
+        ConsoleUI::printInfo(
+            "Logged in as: " + user.username);
+
+        std::cout
+            << "1. Add product\n"
+            << "2. Update product\n"
+            << "3. Remove product\n"
+            << "4. Search product\n"
+            << "5. Stock in\n"
+            << "6. Stock out\n"
+            << "7. Check stock\n"
+            << "8. Stock history\n"
+            << "9. List all products\n"
+            << "10. Inventory summary\n"
+            << "0. Logout and exit\n";
+
+        int choice =
+            ConsoleUI::readInt(
+                "Choose an option: ",
+                0,
+                10);
+
         switch (choice) {
-            case 1: handleAddProduct(); break;
-            case 2: handleUpdateProduct(); break;
-            case 3: handleRemoveProduct(); break;
-            case 4: handleListAll(); break;
-            case 5: handleFindById(); break;
-            case 6: handleSearchByName(); break;
+
+            case 1:
+                handleAddProduct();
+                break;
+
+            case 2:
+                handleUpdateProduct();
+                break;
+
+            case 3:
+                handleRemoveProduct();
+                break;
+
+            case 4:
+                handleSearchByName();
+                break;
+
+            case 5:
+                handleStockIn(user);
+                break;
+
+            case 6:
+                handleStockOut(user);
+                break;
+
             case 7:
+                handleCheckStock();
+                break;
+
+            case 8:
+                handleStockHistory();
+                break;
+
+            case 9:
+                handleListAll();
+                break;
+
+            case 10:
+                handleInventorySummary();
+                break;
+
+            case 0:
                 ConsoleUI::printInfo("Goodbye.");
                 return;
         }
@@ -160,7 +216,6 @@ Product MenuController::promptForProductFields(const Product& existing) {
     promptString("Name", p.name, true);
     promptString("Category", p.category, false);
     promptDouble("Unit price", p.unitPrice);
-    promptInt("Quantity", p.quantity);
     promptInt("Low-stock threshold", p.lowStockThreshold);
 
     return p;
@@ -284,6 +339,174 @@ void MenuController::printProductDetail(const Product& p) {
               << "  Low-stock threshold: " << p.lowStockThreshold << "\n"
               << "  Status:              " << (p.isLowStock() ? "LOW STOCK" : "OK") << "\n"
               << std::endl;
+}
+void MenuController::handleStockIn(const User& user) {
+
+    ConsoleUI::printHeader("Stock In");
+
+    std::string productId =
+        ConsoleUI::readNonEmptyLine("Product id: ");
+
+    int quantity =
+        ConsoleUI::readInt(
+            "Quantity: ",
+            1,
+            1000000000);
+
+    std::string reason =
+        ConsoleUI::readNonEmptyLine("Reason: ");
+
+    auto result =
+        stockService_.stockIn(
+            productId,
+            quantity,
+            user.username,
+            reason);
+
+    if (result.isError()) {
+        ConsoleUI::printError(result.message());
+        return;
+    }
+
+    ConsoleUI::printSuccess(
+        "Stock added successfully.");
+
+    ConsoleUI::printInfo(
+        "New quantity: " +
+        std::to_string(
+            result.value().resultingQuantity));
+}
+void MenuController::handleStockOut(const User& user) {
+
+    ConsoleUI::printHeader("Stock Out");
+
+    std::string productId =
+        ConsoleUI::readNonEmptyLine("Product id: ");
+
+    int quantity =
+        ConsoleUI::readInt(
+            "Quantity: ",
+            1,
+            1000000000);
+
+    std::string reason =
+        ConsoleUI::readNonEmptyLine("Reason: ");
+
+    auto result =
+        stockService_.stockOut(
+            productId,
+            quantity,
+            user.username,
+            reason);
+
+    if (result.isError()) {
+        ConsoleUI::printError(result.message());
+        return;
+    }
+
+    ConsoleUI::printSuccess(
+        "Stock removed successfully.");
+
+    ConsoleUI::printInfo(
+        "Remaining quantity: " +
+        std::to_string(
+            result.value().resultingQuantity));
+}
+void MenuController::handleCheckStock() {
+
+    ConsoleUI::printHeader("Check Stock");
+
+    std::string productId =
+        ConsoleUI::readNonEmptyLine("Product id: ");
+
+    auto result =
+        stockService_.getQuantity(productId);
+
+    if (result.isError()) {
+        ConsoleUI::printError(result.message());
+        return;
+    }
+
+    ConsoleUI::printInfo(
+        "Current quantity: " +
+        std::to_string(result.value()));
+}
+void MenuController::handleStockHistory() {
+
+    ConsoleUI::printHeader("Stock History");
+
+    std::string productId =
+        ConsoleUI::readNonEmptyLine("Product id: ");
+
+    auto result =
+        reportService_.historyFor(productId);
+
+    if (result.isError()) {
+        ConsoleUI::printError(result.message());
+        return;
+    }
+
+    const auto& history = result.value();
+
+    if (history.empty()) {
+        ConsoleUI::printInfo(
+            "No stock movements found.");
+
+        return;
+    }
+
+    for (const auto& movement : history) {
+
+        std::cout
+            << movement.movementId
+            << " | "
+            << movement.type
+            << " | Qty change: "
+            << movement.quantityChange
+            << " | Result: "
+            << movement.resultingQuantity
+            << " | "
+            << movement.timestamp
+            << " | User: "
+            << movement.userId
+            << " | "
+            << movement.reason
+            << '\n';
+    }
+}
+void MenuController::handleInventorySummary() {
+
+    ConsoleUI::printHeader(
+        "Inventory Summary");
+
+    auto result =
+        reportService_.inventorySummary();
+
+    if (result.isError()) {
+        ConsoleUI::printError(result.message());
+        return;
+    }
+
+    const auto& summary = result.value();
+
+    std::cout
+        << "Total products: "
+        << summary.totalProducts
+        << '\n'
+
+        << "Total units: "
+        << summary.totalUnits
+        << '\n'
+
+        << "Total inventory value: "
+        << std::fixed
+        << std::setprecision(2)
+        << summary.totalValue
+        << '\n'
+
+        << "Low-stock products: "
+        << summary.lowStockProducts
+        << '\n';
 }
 
 } // namespace risms

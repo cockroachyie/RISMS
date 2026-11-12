@@ -7,6 +7,10 @@
 #include "ProductRepository.h"
 #include "ProductService.h"
 #include "MenuController.h"
+#include "LedgerRepository.h"
+#include "StockService.h"
+#include "ReportService.h"
+#include "Errorlogger.h"
 
 using namespace risms;
 
@@ -41,10 +45,23 @@ int main() {
                                "). Using built-in defaults.");
     }
 
-    std::string usersFile = config.getString("users_file", "data/users.txt");
-    std::string productsFile = config.getString("products_file", "data/products.txt");
-    int maxAttempts = config.getInt("max_login_attempts", 3);
-    int lockoutSeconds = config.getInt("lockout_duration_seconds", 300);
+    std::string usersFile =
+    config.getString("users_file", "data/users.txt");
+
+    std::string productsFile =
+    config.getString("products_file", "data/products.txt");
+
+    std::string ledgerFile =
+    config.getString("ledger_file", "data/ledger.dat");
+
+    int maxAttempts =
+    config.getInt("max_login_attempts", 3);
+
+    int lockoutSeconds =
+    config.getInt("lockout_duration_seconds", 300);
+
+    int lowStockThreshold =
+    config.getInt("low_stock_threshold", 10);
 
     UserRepository userRepo(usersFile);
     auto userLoadResult = userRepo.load();
@@ -60,10 +77,46 @@ int main() {
         ConsoleUI::printError("Could not load product file: " + productLoadResult.message());
         return 1;
     }
+    LedgerRepository ledgerRepo(ledgerFile);
 
-    AuthService authService(userRepo, maxAttempts, lockoutSeconds);
-    ProductService productService(productRepo);
-    MenuController menu(authService, productService);
+    auto ledgerLoadResult =
+        ledgerRepo.load();
+
+    if (ledgerLoadResult.isError()) {
+
+        ErrorLogger::error(
+            "LedgerRepository",
+            ledgerLoadResult.message());
+
+    ConsoleUI::printError(
+        "Could not load stock ledger.");
+
+    return 1;
+}
+
+    AuthService authService(
+        userRepo,
+        maxAttempts,
+        lockoutSeconds);
+
+    ProductService productService(
+        productRepo);
+
+    StockService stockService(
+        productRepo,
+        ledgerRepo);
+
+    ReportService reportService(
+        productRepo,
+        ledgerRepo,
+        lowStockThreshold);
+
+    MenuController menu(
+        authService,
+        productService,
+        stockService,
+        reportService);
+
     menu.run();
 
     return 0;

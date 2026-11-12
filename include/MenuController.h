@@ -6,6 +6,8 @@
 #include "Result.h"
 #include "User.h"
 #include "Product.h"
+#include "StockService.h"
+#include "ReportService.h"
 
 namespace risms {
 
@@ -16,13 +18,19 @@ namespace risms {
 // summary are out of scope for Sprint 1 and are not wired in here.
 class MenuController {
 public:
-    MenuController(AuthService& authService, ProductService& productService);
+    MenuController(
+    AuthService& authService,
+    ProductService& productService,
+    StockService& stockService,
+    ReportService& reportService);
 
     void run();
 
 private:
     AuthService& authService_;
     ProductService& productService_;
+    StockService& stockService_;
+    ReportService& reportService_;
 
     Result<User> loginGate();
     void runMainMenu(const User& user);
@@ -33,6 +41,11 @@ private:
     void handleListAll();
     void handleFindById(); // doubles as the product detail view
     void handleSearchByName();
+    void handleStockIn(const User& user);
+    void handleStockOut(const User& user);
+    void handleCheckStock();
+    void handleStockHistory();
+    void handleInventorySummary();
 
     Product promptForProductFields(const Product& existing); // existing used to prefill on update (empty id => add)
     void printProductDetail(const Product& p);
